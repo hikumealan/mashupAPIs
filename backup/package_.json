@@ -1,0 +1,23 @@
+{
+  "name": "name",
+  "version": "0.0.0",
+  "description": "description",
+  "main": "entry",
+  "dependencies": {
+    "usage": "~0.3.9"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "test",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git"
+  },
+  "keywords": [
+    "keywords"
+  ],
+  "author": "author",
+  "license": "license"
+}

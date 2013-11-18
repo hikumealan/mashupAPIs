@@ -1,0 +1,35 @@
+{
+  "name": "mashupAPIs",
+  "version": "0.0.0",
+  "description": "A Nodejs mashup of several APIs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hikumealan/mashupAPIs.git"
+  },
+  "keywords": [
+    "Javascript",
+    "Nodejs"
+  ],
+  "author": "Bryan Alan Olson",
+  "license": "BSD-2-Clause",
+  "bugs": {
+    "url": "https://github.com/hikumealan/mashupAPIs/issues"
+  },
+  "dependencies": {
+    "redis": "~0.9.0",
+    "underscore": "~1.5.2",
+    "async": "~0.2.9",
+    "request": "~2.27.0",
+    "optimist": "~0.6.0",
+    "express": "~3.4.4",
+    "commander": "~2.0.0",
+    "colors": "~0.6.2",
+    "lodash": "~2.3.0",
+    "mkdirp": "~0.3.5",
+    "cuid": "~1.2.1"
+  }
+}
