@@ -245,26 +245,26 @@ var geocodeResponse = function(connection, error, data){
 	}
 }
 var weatherRequest = function(connection, index){
-	console.log('weatherRequest')
-	console.log(arguments);
+	//console.log('weatherRequest')
+	//console.log(arguments);
 	var host = 'api.geonames.org';
 	var options = {
 		host: host
 		, port: 80
-		, path: '/findNearByWeatherJSON?lat=' + connection.lat + '&lng=' + connection.lng + '&username=' + secrets.getUsername(host)
+		, path: '/findNearByWeatherJSON?lat=' + connection.results[index].lat.toString() + '&lng=' + connection.results[index].lng.toString() + '&username=' + secrets.getUsername(host)
 		, method: 'GET'
 	};
 	serviceRequest(options, 'weatherResponse', connection, index);
 }
 var weatherResponse = function(connection, error, data, index){
-	console.log('weatherResponse')
-	console.log(arguments);
+	//console.log('weatherResponse')
+	//console.log(arguments);
 	if(error){
 		// TODO: Handle Error
 	}
 	try{
+		connection.dependancy.weather += 1;
 		data = JSON.parse(data);
-		connection.dependancy.weather = 1;
 		connection.results[index].weather = data;
 	} catch(error){
 		console.log(error);
@@ -272,26 +272,26 @@ var weatherResponse = function(connection, error, data, index){
 	eventEmitter.emit('progress', connection);
 }
 var timezoneRequest = function(connection, index){
-	console.log('timezoneRequest')
-	console.log(arguments);
+	//console.log('timezoneRequest')
+	//console.log(arguments);
 	var host = 'api.geonames.org';
 	var options = {
 		host: host
 		, port: 80
-		, path: '/timezoneJSON?lat=' + connection.lat + '&lng=' + connection.lng + '&username=' + secrets.getUsername(host)
+		, path: '/timezoneJSON?lat=' + connection.results[index].lat.toString() + '&lng=' + connection.results[index].lng.toString() + '&username=' + secrets.getUsername(host)
 		, method: 'GET'
 	};
 	serviceRequest(options, 'timezoneResponse', connection, index);
 }
 var timezoneResponse = function(connection, error, data, index){
-	console.log('timezoneResponse')
-	console.log(arguments);
+	//console.log('timezoneResponse')
+	//console.log(arguments);
 	if(error){
 		// TODO: Handle Error
 	}
 	try{
+		connection.dependancy.timezone += 1;
 		data = JSON.parse(data);
-		connection.dependancy.timezone = 1;
 		connection.results[index].timezone = data;
 	} catch(error){
 		console.log(error);
@@ -299,7 +299,7 @@ var timezoneResponse = function(connection, error, data, index){
 	eventEmitter.emit('progress', connection);
 }
 var progress = function(connection){
-	if(connection.dependancy.weather === 1 && connection.dependancy.timezone === 1){
+	if(connection.dependancy.weather === connection.results.length - 1 && connection.dependancy.timezone === connection.results.length - 1){
 		connection.status = 200;
 		eventEmitter.emit('httpResponse', connection);
 	}
