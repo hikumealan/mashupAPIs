@@ -89,19 +89,14 @@ var http = require('http').createServer(function(request, response){
 		, response : response
 		, url : url.parse(request.url).pathname.slice(1)
 		, datasource : ''
-		, cache : false
+		, cache : -1
 		, status : 0
 		, results : {}
 	};
+	connection.key = connection.url.split('/')[0] || '';
+	connection.value = (connection.url.split('/')[1] || '').replace(' ', '+').replace('%20', '+');
 	// Suppress the favicon
-	if((request || {}).url === CONSTANT.favicon){
-		// Return a 404 for favicon
-		connection.status = 404;
-		eventEmitter.emit('httpResponse', connection);
-	}
-	else{
-		connection.key = connection.url.split('/')[0];
-		connection.value = connection.url.split('/')[1].replace(' ', '+').replace('%20', '+');
+	if(connection.url.split('/').length >= 2 && connection.value && request.url !== CONSTANT.favicon){
 		// If Redis is running - Check if the geocode results are already in the Redis cache
 		if(redis.status === 1){
 			redis.get(connection.value, function(error, data){
@@ -112,7 +107,13 @@ var http = require('http').createServer(function(request, response){
 			eventEmitter.emit('geocodeRequest', connection);
 		}
 	}
-}).listen(8080, 'localhost');
+	else{
+		// Return a 404 for favicon
+		connection.status = 404;
+		eventEmitter.emit('httpResponse', connection, {}, {});
+	}
+}).listen(8888, 'localhost');
+console.log('HTTP Server Start at locahost:8888');
 
 var parseCookie = function(content, key){
 	try{
@@ -164,7 +165,7 @@ var redisResponse = function(connection, error, data){
 		eventEmitter.emit('geocodeRequest', connection);
 	}
 	else{
-		connection.cache = true;
+		connection.cache = 1;
 		connection.datasource = 'Redis Cache';
 		eventEmitter.emit('geocodeResponse', connection, error, data);
 	}
@@ -188,7 +189,7 @@ var geocodeRequest = function(connection){
 		, path: '/maps/api/geocode/json?' + type + '=' + connection.value + '&sensor=false'
 		, method: 'GET'
 	};
-	connection.cache = false;
+	connection.cache = 0;
 	connection.datasource = 'Google API';
 	serviceRequest(options, 'geocodeResponse', connection);
 }
