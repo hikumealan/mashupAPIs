@@ -23,6 +23,7 @@ var CONSTANT = {
 	//	, news : 'NEWS'
 	//}
 };
+var secrets = require('./secrets');
 
 //var geocode = require('./geocode');
 
@@ -82,21 +83,25 @@ redis.on('error', function(error){
 var url = require('url');
 var events = require('events');
 var eventEmitter = new events.EventEmitter();
-var http = require('http').createServer(function(request, response){
+var http = require('http').createServer(function(_request, _response){
 	//var httpMethod = (request || {}).method || '';
 	var connection = {
-		request : request //JSON.parse(JSON.stringify(request))
-		, response : response
-		, url : url.parse(request.url).pathname.slice(1)
+		request : _request //JSON.parse(JSON.stringify(request))
+		, response : _response
+		, url : url.parse(_request.url).pathname.slice(1)
 		, datasource : ''
 		, cache : -1
 		, status : 0
-		, results : {}
+		, results : []
+		, dependancy : {
+			weather : -1
+			, timezone : -1
+		} 
 	};
 	connection.key = connection.url.split('/')[0] || '';
 	connection.value = (connection.url.split('/')[1] || '').replace(' ', '+').replace('%20', '+');
 	// Suppress the favicon
-	if(connection.url.split('/').length >= 2 && connection.value && request.url !== CONSTANT.favicon){
+	if(connection.url.split('/').length >= 2 && connection.value && _request.url !== CONSTANT.favicon){
 		// If Redis is running - Check if the geocode results are already in the Redis cache
 		if(redis.status === 1){
 			redis.get(connection.value, function(error, data){
@@ -133,12 +138,12 @@ var parseCookie = function(content, key){
 	}
 	return '';
 }
-var getSessionUID = function(request){
-	var _cuid = parseCookie((((request || {}).headers || {}).cookie || ''), CONSTANT.cuid);
+var getSessionUID = function(_request){
+	var _cuid = parseCookie((((_request || {}).headers || {}).cookie || ''), CONSTANT.cuid);
 	_cuid = _cuid ? _cuid : cuid(); //cuid.slug();
 	return _cuid;
 }
-var serviceRequest = function(options, callback, connection){
+var serviceRequest = function(options, callback, connection, index){
 	var _http = require('http');
 	var _request = _http.request(options, function(_response){
 		var data = '';
@@ -151,7 +156,7 @@ var serviceRequest = function(options, callback, connection){
 			error = _error;
 		});
 		_response.on('end', function(){
-			eventEmitter.emit(callback, connection, error, data);
+			eventEmitter.emit(callback, connection, error, data, index);
 		});
 	}).end();
 	//});
@@ -208,7 +213,6 @@ var geocodeResponse = function(connection, error, data){
 			// TODO: Add Expiration to the data stored in Redis
 			redis.set(connection.value, JSON.stringify(data), redis.print);
 		}
-		var results = [];
 		for(var i in data.results){
 			var lat = ((((data || {}).results[i] || {}).geometry || {}).location || {}).lat;
 			var lng = ((((data || {}).results[i] || {}).geometry || {}).location || {}).lng;
@@ -218,26 +222,85 @@ var geocodeResponse = function(connection, error, data){
 				, lng : lng
 				, weather : {}
 				, timezone : {}
-				, events : {}
-				, movies : {}
+				//, events : {}
+				//, movies : {}
 			};
+			connection.results.push(result);
 			// TODO: Loop over Results and Gather secondary data for each Location (lat, lng)
+			eventEmitter.emit('weatherRequest', connection, i);
+			eventEmitter.emit('timezoneRequest', connection, i);
 			/*
 			async.parallel([
 				function(){ ... },
 				function(){ ... }
 			], callback);
 			*/
-			results.push(result);
+			// TODO: Add in an event Timeout that call the httpResponse
 		}
-		// TODO: Move to the callback
-		connection.status = 200;
-		connection.results = results;
-		eventEmitter.emit('httpResponse', connection);
 	}
 	else{
 		connection.status = 200;
 		connection.results = data;
+		eventEmitter.emit('httpResponse', connection);
+	}
+}
+var weatherRequest = function(connection, index){
+	console.log('weatherRequest')
+	console.log(arguments);
+	var host = 'api.geonames.org';
+	var options = {
+		host: host
+		, port: 80
+		, path: '/findNearByWeatherJSON?lat=' + connection.lat + '&lng=' + connection.lng + '&username=' + secrets.getUsername(host)
+		, method: 'GET'
+	};
+	serviceRequest(options, 'weatherResponse', connection, index);
+}
+var weatherResponse = function(connection, error, data, index){
+	console.log('weatherResponse')
+	console.log(arguments);
+	if(error){
+		// TODO: Handle Error
+	}
+	try{
+		data = JSON.parse(data);
+		connection.dependancy.weather = 1;
+		connection.results[index].weather = data;
+	} catch(error){
+		console.log(error);
+	}
+	eventEmitter.emit('progress', connection);
+}
+var timezoneRequest = function(connection, index){
+	console.log('timezoneRequest')
+	console.log(arguments);
+	var host = 'api.geonames.org';
+	var options = {
+		host: host
+		, port: 80
+		, path: '/timezoneJSON?lat=' + connection.lat + '&lng=' + connection.lng + '&username=' + secrets.getUsername(host)
+		, method: 'GET'
+	};
+	serviceRequest(options, 'timezoneResponse', connection, index);
+}
+var timezoneResponse = function(connection, error, data, index){
+	console.log('timezoneResponse')
+	console.log(arguments);
+	if(error){
+		// TODO: Handle Error
+	}
+	try{
+		data = JSON.parse(data);
+		connection.dependancy.timezone = 1;
+		connection.results[index].timezone = data;
+	} catch(error){
+		console.log(error);
+	}
+	eventEmitter.emit('progress', connection);
+}
+var progress = function(connection){
+	if(connection.dependancy.weather === 1 && connection.dependancy.timezone === 1){
+		connection.status = 200;
 		eventEmitter.emit('httpResponse', connection);
 	}
 }
@@ -255,4 +318,9 @@ var httpResponse = function(connection){
 eventEmitter.on('redisResponse', redisResponse);
 eventEmitter.on('geocodeRequest', geocodeRequest);
 eventEmitter.on('geocodeResponse', geocodeResponse);
+eventEmitter.on('weatherRequest', weatherRequest);
+eventEmitter.on('weatherResponse', weatherResponse);
+eventEmitter.on('timezoneRequest', timezoneRequest);
+eventEmitter.on('timezoneResponse', timezoneResponse);
+eventEmitter.on('progress', progress);
 eventEmitter.on('httpResponse', httpResponse);
