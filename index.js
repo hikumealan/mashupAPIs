@@ -87,28 +87,29 @@ var http = require('http').createServer(function(request, response){
 	var connection = {
 		request : request //JSON.parse(JSON.stringify(request))
 		, response : response
+		, url : url.parse(request.url).pathname.slice(1)
 		, datasource : ''
-		, results : []
+		, cache : false
+		, status : 0
+		, results : {}
 	};
 	// Suppress the favicon
 	if((request || {}).url === CONSTANT.favicon){
 		// Return a 404 for favicon
 		connection.status = 404;
-		eventEmitter.emit('httpResponse', connection, {}, {});
+		eventEmitter.emit('httpResponse', connection);
 	}
 	else{
-		connection.url = url.parse(connection.request.url).pathname.slice(1);
 		connection.key = connection.url.split('/')[0];
 		connection.value = connection.url.split('/')[1].replace(' ', '+').replace('%20', '+');
-		connection.cache = false;
 		// If Redis is running - Check if the geocode results are already in the Redis cache
 		if(redis.status === 1){
-			redis.get(connection.value, function(error, reply){
-				eventEmitter.emit('redisResponse', connection, error, reply);
+			redis.get(connection.value, function(error, data){
+				eventEmitter.emit('redisResponse', connection, error, data);
 			});
 		}
 		else{
-			eventEmitter.emit('geocodeRequest', connection, connection.key, connection.value);
+			eventEmitter.emit('geocodeRequest', connection);
 		}
 	}
 }).listen(8080, 'localhost');
@@ -136,7 +137,7 @@ var getSessionUID = function(request){
 	_cuid = _cuid ? _cuid : cuid(); //cuid.slug();
 	return _cuid;
 }
-var serviceRequest = function(options, callback, connection, parameters){
+var serviceRequest = function(options, callback, connection){
 	var _http = require('http');
 	var _request = _http.request(options, function(_response){
 		var data = '';
@@ -149,7 +150,7 @@ var serviceRequest = function(options, callback, connection, parameters){
 			error = _error;
 		});
 		_response.on('end', function(){
-			eventEmitter.emit(callback, connection, error, data, parameters);
+			eventEmitter.emit(callback, connection, error, data);
 		});
 	}).end();
 	//});
@@ -160,16 +161,16 @@ var redisResponse = function(connection, error, data){
 		redis.emit('error', error);
 	}
 	if(data === null){
-		eventEmitter.emit('geocodeRequest', connection, connection.key, connection.value);
+		eventEmitter.emit('geocodeRequest', connection);
 	}
 	else{
 		connection.cache = true;
 		connection.datasource = 'Redis Cache';
-		eventEmitter.emit('geocodeResponse', connection, error, data, {});
+		eventEmitter.emit('geocodeResponse', connection, error, data);
 	}
 }
-var geocodeRequest = function(connection, key, value){
-	var type = key.toLowerCase();
+var geocodeRequest = function(connection){
+	var type = connection.key.toLowerCase();
 	switch(type){
 		case 'address':
 		case 'latlng':
@@ -184,14 +185,17 @@ var geocodeRequest = function(connection, key, value){
 	var options = {
 		host: 'maps.googleapis.com'
 		, port: 80
-		, path: '/maps/api/geocode/json?' + type + '=' + value + '&sensor=false'
+		, path: '/maps/api/geocode/json?' + type + '=' + connection.value + '&sensor=false'
 		, method: 'GET'
 	};
 	connection.cache = false;
 	connection.datasource = 'Google API';
-	serviceRequest(options, 'geocodeResponse', connection, {});
+	serviceRequest(options, 'geocodeResponse', connection);
 }
-var geocodeResponse = function(connection, error, data, parameters){
+var geocodeResponse = function(connection, error, data){
+	if(error){
+		// TODO: Handle Error
+	}
 	try{
 		data = JSON.parse(data);
 	} catch(error){
@@ -203,6 +207,7 @@ var geocodeResponse = function(connection, error, data, parameters){
 			// TODO: Add Expiration to the data stored in Redis
 			redis.set(connection.value, JSON.stringify(data), redis.print);
 		}
+		var results = [];
 		for(var i in data.results){
 			var lat = ((((data || {}).results[i] || {}).geometry || {}).location || {}).lat;
 			var lng = ((((data || {}).results[i] || {}).geometry || {}).location || {}).lng;
@@ -214,7 +219,6 @@ var geocodeResponse = function(connection, error, data, parameters){
 				, timezone : {}
 				, events : {}
 				, movies : {}
-				, datasource : connection.datasource
 			};
 			// TODO: Loop over Results and Gather secondary data for each Location (lat, lng)
 			/*
@@ -223,25 +227,27 @@ var geocodeResponse = function(connection, error, data, parameters){
 				function(){ ... }
 			], callback);
 			*/
-			connection.results.push(result);
+			results.push(result);
 		}
 		// TODO: Move to the callback
 		connection.status = 200;
-		eventEmitter.emit('httpResponse', connection, results, parameters);
+		connection.results = results;
+		eventEmitter.emit('httpResponse', connection);
 	}
 	else{
 		connection.status = 200;
-		eventEmitter.emit('httpResponse', connection, data, parameters);
+		connection.results = data;
+		eventEmitter.emit('httpResponse', connection);
 	}
 }
-var httpResponse = function(connection, data, parameters){
+var httpResponse = function(connection){
 	//redis.end();
 	//var httpHeaders = (request || {}).headers || {};
 	connection.response.writeHead(connection.status, {
 		'Content-Type': 'text-plain'
 		, 'Set-Cookie': CONSTANT.cuid + '=' + getSessionUID(connection.request)
 	});
-	connection.response.write(JSON.stringify(data));
+	connection.response.write(JSON.stringify(connection.results));
 	connection.response.end();
 }
 
