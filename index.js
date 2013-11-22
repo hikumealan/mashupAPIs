@@ -25,8 +25,7 @@ var CONSTANT = {
 };
 var secrets = require('./secrets');
 
-//var geocode = require('./geocode');
-
+// TDOO: Use grunt
 var underscore = require('underscore');
 //var async = require('async');
 //var request = require('request');
@@ -40,6 +39,11 @@ var underscore = require('underscore');
 //var colors = require('colors');
 //var lodash = require('lodash');
 //var mkdirp = require('mkdirp');
+
+//var socket = require('socket.io');
+//var mocha = require('mocha');
+//var jade = require('jade');
+//var mongoose = require('mongoose');
 
 var cuid = require('cuid');
 
@@ -89,6 +93,11 @@ var http = require('http').createServer(function(_request, _response){
 		request : _request //JSON.parse(JSON.stringify(request))
 		, response : _response
 		, url : url.parse(_request.url).pathname.slice(1)
+		, search : {
+			type : ''
+			, key : ''
+			, value : ''
+		}
 		, datasource : ''
 		, cache : -1
 		, status : 0
@@ -98,13 +107,14 @@ var http = require('http').createServer(function(_request, _response){
 			, timezone : -1
 		} 
 	};
-	connection.key = connection.url.split('/')[0] || '';
-	connection.value = (connection.url.split('/')[1] || '').replace(' ', '+').replace('%20', '+');
+	connection.search.type = connection.url.split('/')[0] || '';
+	connection.search.key = (connection.url.split('/')[1] || '').toLowerCase();
+	connection.search.value = connection.url.split('/')[1] || '';
 	// Suppress the favicon
-	if(connection.url.split('/').length >= 2 && connection.value && _request.url !== CONSTANT.favicon){
+	if(connection.url.split('/').length >= 2 && connection.search.value && _request.url !== CONSTANT.favicon){
 		// If Redis is running - Check if the geocode results are already in the Redis cache
 		if(redis.status === 1){
-			redis.get(connection.value, function(error, data){
+			redis.get(connection.search.value, function(error, data){
 				eventEmitter.emit('redisResponse', connection, error, data);
 			});
 		}
@@ -176,7 +186,7 @@ var redisResponse = function(connection, error, data){
 	}
 }
 var geocodeRequest = function(connection){
-	var type = connection.key.toLowerCase();
+	var type = connection.search.key.toLowerCase();
 	switch(type){
 		case 'address':
 		case 'latlng':
@@ -191,7 +201,7 @@ var geocodeRequest = function(connection){
 	var options = {
 		host: 'maps.googleapis.com'
 		, port: 80
-		, path: '/maps/api/geocode/json?' + type + '=' + connection.value + '&sensor=false'
+		, path: '/maps/api/geocode/json?' + type + '=' + connection.search.value.replace(' ', '+').replace('%20', '+') + '&sensor=false'
 		, method: 'GET'
 	};
 	connection.cache = 0;
@@ -211,7 +221,7 @@ var geocodeResponse = function(connection, error, data){
 		// If Redis is running cache the geocode results if its not already from the cache
 		if(redis.status === 1 && !connection.cache){
 			// TODO: Add Expiration to the data stored in Redis
-			redis.set(connection.value, JSON.stringify(data), redis.print);
+			redis.set(connection.search.value, JSON.stringify(data), redis.print);
 		}
 		for(var i in data.results){
 			var lat = ((((data || {}).results[i] || {}).geometry || {}).location || {}).lat;
